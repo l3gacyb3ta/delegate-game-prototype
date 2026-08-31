@@ -6,14 +6,26 @@ import type { GameState, Proposal } from "./types";
 const fresh = () => initialState(7);
 
 describe("the evening's menu", () => {
-  it("offers only links the co-op could actually build tonight", () => {
+  it("offers only motions the fund could actually pay for tonight", () => {
+    const s = fresh();
+    for (const p of availableProposals(s)) expect(p.cost).toBeLessThanOrEqual(s.budget);
+  });
+
+  it("prices a link to include mounting whatever bare roofs it needs", () => {
+    const s = fresh();
+    const toTower = availableProposals(s).find((p) => p.id === "link:rialto~watertower");
+    expect(toTower).toBeDefined();
+    // fso (2) plus one bare roof (1). Nobody is ever left holding a stray node.
+    expect(toTower!.cost).toBe(3);
+    expect(toTower!.motion).toContain("mounting on");
+  });
+
+  it("says out loud which roofs it is going to put equipment on", () => {
     const s = fresh();
     for (const p of availableProposals(s)) {
-      expect(p.cost).toBeLessThanOrEqual(s.budget);
-      if (p.kind === "build-link") {
-        expect(s.sites.find((x) => x.id === p.from)?.hasNode).toBe(true);
-        expect(s.sites.find((x) => x.id === p.to)?.hasNode).toBe(true);
-      }
+      if (p.kind !== "build-link" || !p.from || !p.to) continue;
+      const bare = [p.from, p.to].filter((id) => !s.sites.find((x) => x.id === id)?.hasNode);
+      expect(p.motion.includes("mounting on")).toBe(bare.length > 0);
     }
   });
 
@@ -37,11 +49,13 @@ describe("the evening's menu", () => {
 
 describe("counterproposals", () => {
   const failed: Proposal = {
-    id: "mount:watertower",
-    kind: "mount-node",
-    motion: "that the co-op mount a node on the water tower",
-    cost: 1,
-    siteId: "watertower",
+    id: "link:rialto~watertower",
+    kind: "build-link",
+    motion: "that the co-op string an optical link from the Rialto to the water tower",
+    cost: 3,
+    from: "rialto",
+    to: "watertower",
+    linkKind: "fso",
   };
 
   it("produces alternatives and never re-tables the motion that just died", () => {
@@ -59,6 +73,11 @@ describe("counterproposals", () => {
     const s: GameState = { ...fresh(), budget: 1 };
     for (const p of counterproposals(s, failed)) expect(p.cost).toBeLessThanOrEqual(1);
   });
+
+  it("offers spending on what exists instead of on more of it", () => {
+    // The connected bloc's standing answer, and it grows every time you win.
+    expect(counterproposals(fresh(), failed).some((p) => p.kind === "harden")).toBe(true);
+  });
 });
 
 describe("the water tower, which is the whole point", () => {
@@ -66,16 +85,8 @@ describe("the water tower, which is the whole point", () => {
   // objection is that nobody asked her last time. The menu has to contain the
   // motion that asks, or the flip is unreachable and the content is dead.
   it("offers to name Yolanda on the link that uses her tower", () => {
-    const s = { ...fresh(), sites: fresh().sites.map((x) => (x.id === "watertower" ? { ...x, hasNode: true } : x)) };
-    const named = availableProposals(s)
-      .filter((p) => p.from === "rialto" && p.to === "watertower")
-      .map((p) => p.namedStakeholder);
-    expect(named).toContain("yolanda");
-  });
-
-  it("offers to name her on the motion to mount the gear in the first place", () => {
     const named = availableProposals(fresh())
-      .filter((p) => p.siteId === "watertower")
+      .filter((p) => p.from === "rialto" && p.to === "watertower")
       .map((p) => p.namedStakeholder);
     expect(named).toContain("yolanda");
   });

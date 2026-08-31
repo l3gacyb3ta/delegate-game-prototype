@@ -5,18 +5,17 @@
 //   npm run sim            two hundred runs, both strategies
 //   npm run sim -- 500     more of them
 
-import { cohesion, coverage } from "./graph";
+import { assembly, cohesion, coverage } from "./graph";
 import { availableProposals } from "./proposals";
 import { initialState, reduce } from "./reducer";
-import { councilLean } from "./vote";
+import { assemblyLean } from "./vote";
 import type { GameState, Outcome, Proposal } from "./types";
 
-type Strategy = "reads-the-room" | "engineer" | "bulldozer";
+type Strategy = "whip" | "reads-the-room" | "engineer" | "bulldozer";
 
 /** How much closer to a connected map this motion would put us. */
 function progress(p: Proposal): number {
   if (p.kind === "build-link") return 2;
-  if (p.kind === "mount-node") return 1.5;
   if (p.kind === "harden") return 0.5;
   return 0.25;
 }
@@ -28,15 +27,24 @@ function choose(s: GameState, strategy: Strategy): Proposal | undefined {
     p,
     // The engineer builds the most useful thing and ignores the room. The
     // other one weighs whether it can actually carry.
-    v: strategy === "reads-the-room" ? progress(p) + councilLean(s, p) : progress(p),
+    v: strategy === "reads-the-room" || strategy === "whip" ? progress(p) + assemblyLean(s, p) : progress(p),
   }));
   return scored.sort((a, b) => b.v - a.v || a.p.id.localeCompare(b.p.id))[0]?.p;
 }
 
-function run(seed: number, strategy: Strategy): { outcome: Outcome; state: GameState; motions: number; carried: number } {
+interface RunResult {
+  outcome: Outcome;
+  state: GameState;
+  motions: number;
+  carried: number;
+  margins: number[];
+}
+
+function run(seed: number, strategy: Strategy): RunResult {
   let s = initialState(seed);
   let motions = 0;
   let carried = 0;
+  const margins: number[] = [];
 
   while (s.phase !== "over") {
     s = reduce(s, { type: "OPEN_DAY" });
@@ -44,12 +52,18 @@ function run(seed: number, strategy: Strategy): { outcome: Outcome; state: GameS
     // Spend the day on the coldest council member and on unread rooms.
     while (s.actionsLeft > 0) {
       const before = s.actionsLeft;
-      const unread = s.npcs.filter((n) => n.councilMember && !s.revealed.includes(n.id));
+      // Weight attention by how many households a figure actually carries.
+      // The whip ignores anybody small entirely and works the big rooms.
+      const worth = (n: (typeof s.npcs)[number]) =>
+        strategy === "whip" ? (n.households >= 6 ? 3 - n.trust : -99) : (3 - n.trust) * n.households;
+      const unread = s.npcs.filter((n) => !s.revealed.includes(n.id) && n.households > 0);
       const coldest = [...s.npcs]
-        .filter((n) => n.councilMember)
-        .sort((a, b) => a.trust - b.trust || a.id.localeCompare(b.id))[0];
-      const target = unread.sort((a, b) => a.trust - b.trust || a.id.localeCompare(b.id))[0];
-      if (strategy === "bulldozer") {
+        .filter((n) => n.households > 0)
+        .sort((a, b) => worth(b) - worth(a) || a.id.localeCompare(b.id))[0];
+      const target = unread.sort((a, b) => b.households - a.households || a.id.localeCompare(b.id))[0];
+      if (strategy === "whip" && s.tokens > 0 && target && target.households >= 6 && s.turn > 1) {
+        s = reduce(s, { type: "ACT", action: { type: "MONOLOGUE", npcId: target.id } });
+      } else if (strategy === "bulldozer") {
         const unscouted = s.sites.find((x) => !s.scouted.includes(x.id));
         if (unscouted) s = reduce(s, { type: "ACT", action: { type: "SCOUT", siteId: unscouted.id } });
         else s = reduce(s, { type: "SKIP_ACTIONS" });
@@ -66,6 +80,7 @@ function run(seed: number, strategy: Strategy): { outcome: Outcome; state: GameS
     if (p) {
       motions++;
       s = reduce(s, { type: "PROPOSE", proposalId: p.id });
+      if (s.lastVote) margins.push(Math.abs(s.lastVote.yes - s.lastVote.no));
       if (s.lastVote?.passed) carried++;
     } else {
       s = reduce(s, { type: "ABSTAIN" });
@@ -73,7 +88,7 @@ function run(seed: number, strategy: Strategy): { outcome: Outcome; state: GameS
     if (s.phase === "counter") s = reduce(s, { type: "ACCEPT_COUNTER" });
   }
 
-  return { outcome: s.outcome as Outcome, state: s, motions, carried };
+  return { outcome: s.outcome as Outcome, state: s, motions, carried, margins };
 }
 
 function report(strategy: Strategy, runs: number) {
@@ -82,6 +97,10 @@ function report(strategy: Strategy, runs: number) {
   let coh = 0;
   let motions = 0;
   let carried = 0;
+  let dark = 0;
+  let seized = 0;
+  let noticed = 0;
+  const margins: number[] = [];
 
   for (let seed = 1; seed <= runs; seed++) {
     const r = run(seed, strategy);
@@ -90,6 +109,10 @@ function report(strategy: Strategy, runs: number) {
     coh += cohesion(r.state);
     motions += r.motions;
     carried += r.carried;
+    dark += assembly(r.state).dark;
+    if (r.state.log.some((l) => l.text.includes("padlock"))) seized++;
+    if (r.state.log.some((l) => l.text.includes("return address") || l.text.includes("landlord"))) noticed++;
+    margins.push(...r.margins);
   }
 
   const pct = (n: number) => `${((n / runs) * 100).toFixed(0)}%`.padStart(4);
@@ -100,9 +123,15 @@ function report(strategy: Strategy, runs: number) {
   console.log(`    mean coverage      ${(100 * cov / runs).toFixed(1)}%`);
   console.log(`    mean cohesion      ${(coh / runs).toFixed(2)}`);
   console.log(`    motions carried    ${((100 * carried) / motions).toFixed(0)}% of ${(motions / runs).toFixed(1)} per run`);
+  const close = margins.filter((m) => m <= 4).length;
+  const mean = margins.reduce((a, b) => a + b, 0) / Math.max(1, margins.length);
+  console.log(`    vote margin        ${mean.toFixed(1)} mean, ${((100 * close) / margins.length).toFixed(0)}% inside four votes`);
+  console.log(`    still dark at end  ${(dark / runs).toFixed(1)} households`);
+  console.log(`    landlord           noticed ${((100 * noticed) / runs).toFixed(0)}%, seized the stub ${((100 * seized) / runs).toFixed(0)}%`);
 }
 
 const runs = Number(process.argv[2] ?? 200);
+report("whip", runs);
 report("reads-the-room", runs);
 report("engineer", runs);
 report("bulldozer", runs);

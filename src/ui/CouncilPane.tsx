@@ -1,31 +1,55 @@
 // The minutes read like minutes. Vote breakdowns appear here after the fact
 // and never before it.
 
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { availableProposals } from "../game/proposals";
 import { endingTitle } from "../game/outcome";
 import type { GameState, Proposal, VoteResult } from "../game/types";
+import { BLOC_LABEL, bar } from "./words";
 
 const GROUPS: { kind: Proposal["kind"]; heading: string }[] = [
-  { kind: "build-link", heading: "string a link" },
-  { kind: "mount-node", heading: "mount equipment" },
-  { kind: "harden", heading: "spend the fund" },
+  { kind: "build-link", heading: "extend the network" },
+  { kind: "harden", heading: "make good what exists" },
   { kind: "raise-dues", heading: "the fund itself" },
   { kind: "bylaw", heading: "change a bylaw" },
 ];
 
+/**
+ * The answer to "why did that fail" is this table. Blocs first, because that
+ * is the scale at which the room actually decides; constituencies underneath,
+ * because that is where you can go and do something about it.
+ */
 function Tally({ state, vote, heading }: { state: GameState; vote: VoteResult; heading: string }) {
   const name = (id: string) => state.npcs.find((n) => n.id === id)?.name ?? id;
   return (
     <>
       <h3>{heading}</h3>
+      <p className="mono quiet">
+        {vote.yes} for, {vote.no} against, of {vote.yes + vote.no} households
+      </p>
       <table className="tally">
         <tbody>
-          {vote.ballots.map((b) => (
-            <tr key={b.npcId}>
-              <td>{name(b.npcId)}</td>
-              <td className={b.yes ? "aye" : "nay"}>{b.yes ? "aye" : "no"}</td>
-            </tr>
+          {vote.blocs.map((b) => (
+            <Fragment key={b.bloc}>
+              <tr className="bloc-row">
+                <td>{BLOC_LABEL[b.bloc]}</td>
+                <td className="fill">{bar(b.yes, b.households)}</td>
+                <td className={b.yes > b.no ? "aye" : "nay"}>
+                  {b.yes}–{b.no}
+                </td>
+              </tr>
+              {vote.ballots
+                .filter((x) => x.bloc === b.bloc)
+                .map((x) => (
+                  <tr key={x.npcId} className="voice-row">
+                    <td>{name(x.npcId)}</td>
+                    <td className="fill">{bar(x.yes, x.households)}</td>
+                    <td className={x.yes > x.no ? "aye" : "nay"}>
+                      {x.yes}–{x.no}
+                    </td>
+                  </tr>
+                ))}
+            </Fragment>
           ))}
         </tbody>
       </table>

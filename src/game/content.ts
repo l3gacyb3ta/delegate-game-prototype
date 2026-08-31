@@ -11,11 +11,31 @@ export const STARTING_BUDGET = 6;
 /** Coverage and cohesion are the two halves of the same resource pool. */
 export const COVERAGE_WIN = 0.8;
 export const COVERAGE_LOSS = 0.5;
-export const COHESION_WIN = 1.0;
-export const COHESION_FORK = -0.8;
+export const COHESION_WIN = 0.6;
+export const COHESION_FORK = -0.45;
+
+/**
+ * How sharply a constituency's score converts to the share of it voting aye.
+ * 0.16 means a score of +3 carries a bloc almost whole and a score of +0.5
+ * splits it visibly, which is the entire reason for voting at this scale.
+ */
+export const VOTE_SHARPNESS = 0.07;
+/** Per-constituency wobble, on the fraction. Small, because forty-odd votes
+ *  average it out; it decides margins, never outcomes. */
+export const VOTE_NOISE = 0.06;
+
+/** What a storm leaves behind on a link it took down. Hardening clears it. */
+export const SCAR_PER_STORM = 0.1;
+
+/** Days between the landlord noticing and the marshals arriving. */
+export const LANDLORD_FUSE = 5;
+/** How long the stub is gone if you did not get the co-op incorporated. */
+export const SEIZURE_DAYS = 4;
 export const FORK_LOSS_SHARE = 0.4;
 
 export const COSTS = {
+  /** Folded into a link motion now: a link pays to mount whatever bare roofs
+   *  it needs, so nobody is ever left with a node and no link. */
   mount: 1,
   fso: 2,
   lora: 1,
@@ -48,7 +68,7 @@ export const TRUST_ON_BEING_NAMED = 1.5;
  * Small per occasion, ruinous as a habit — and the only route to a council
  * angry enough to fork.
  */
-export const TRUST_ON_LOST_MOTION = -0.1;
+export const TRUST_ON_LOST_MOTION = -0.07;
 
 export const BASE_RELIABILITY: Record<Link["kind"], number> = {
   cable: 0.95,
@@ -69,6 +89,7 @@ export const SITES: Site[] = [
     y: 300,
     uplink: true,
     hardened: false,
+    essential: false,
     note: "The fiber stub terminates in a popcorn machine's junction box. Everything the co-op has comes through here.",
   },
   {
@@ -83,6 +104,7 @@ export const SITES: Site[] = [
     y: 400,
     uplink: false,
     hardened: false,
+    essential: false,
     note: "Two bays, one lift, and a rack of secondhand radios bolted where the compressor used to sit.",
   },
   {
@@ -97,6 +119,7 @@ export const SITES: Site[] = [
     y: 160,
     uplink: false,
     hardened: false,
+    essential: false,
     note: "Open until eleven. The node hums under the change machine and shares a meter with the dryers.",
   },
   {
@@ -111,6 +134,7 @@ export const SITES: Site[] = [
     y: 130,
     uplink: false,
     hardened: false,
+    essential: true,
     note: "A node was mounted here in the spring and has never been connected to anything. It blinks patiently.",
   },
   {
@@ -125,6 +149,7 @@ export const SITES: Site[] = [
     y: 220,
     uplink: false,
     hardened: false,
+    essential: false,
     note: "Sightlines to almost everything. No power, no ladder that anyone will admit to owning.",
   },
   {
@@ -139,6 +164,7 @@ export const SITES: Site[] = [
     y: 470,
     uplink: false,
     hardened: false,
+    essential: false,
     note: "Rear porch, third floor. There are still four anchor bolts up there from the '31 buildout.",
   },
   {
@@ -153,6 +179,7 @@ export const SITES: Site[] = [
     y: 340,
     uplink: false,
     hardened: false,
+    essential: false,
     note: "The bell tower is the second-highest thing on the block and the only one with a generator.",
   },
   {
@@ -167,6 +194,7 @@ export const SITES: Site[] = [
     y: 220,
     uplink: false,
     hardened: false,
+    essential: false,
     note: "Fourteen storeys, a parapet you could land a plane on, and a board that meets on Tuesdays.",
   },
   {
@@ -181,6 +209,7 @@ export const SITES: Site[] = [
     y: 480,
     uplink: false,
     hardened: false,
+    essential: true,
     note: "Six chairs, one autoclave, and a phone line that has been dead since the second flood.",
   },
   {
@@ -195,6 +224,7 @@ export const SITES: Site[] = [
     y: 120,
     uplink: false,
     hardened: false,
+    essential: true,
     note: "Below grade, half-flooded, and the reason this side of the block is dry. City property in the way a stray cat is city property.",
   },
 ];
@@ -208,7 +238,7 @@ export const NPCS: NPC[] = [
       "In '31 the co-op bolted a repeater to her roof while she was at her sister's funeral. She does not care about the hardware. She cares that nobody asked. Name her a stakeholder in a motion and she will hand you the tower.",
     trust: -2,
     grudges: [],
-    councilMember: true,
+    households: 5,
     quirk: "consultation",
     visits: 0,
   },
@@ -220,7 +250,7 @@ export const NPCS: NPC[] = [
       "He resells backhaul to two blocks south for cash and does not want the council auditing his throughput. Anything that routes around the garage is a threat to a business nobody has voted on.",
     trust: 1,
     grudges: ["dez"],
-    councilMember: true,
+    households: 2,
     quirk: "none",
     visits: 0,
   },
@@ -232,7 +262,7 @@ export const NPCS: NPC[] = [
       "He buried a man last winter who could not get a call out. He will trade the roof, the tower, and his own vote for anything that puts the clinic on the network.",
     trust: 0,
     grudges: [],
-    councilMember: true,
+    households: 6,
     quirk: "clinic-first",
     visits: 0,
   },
@@ -244,7 +274,7 @@ export const NPCS: NPC[] = [
       "She is trying to get the co-op incorporated before the building's landlord notices what the stub is worth. Every vote is a precedent she is quietly filing away.",
     trust: 1,
     grudges: ["marcus"],
-    councilMember: true,
+    households: 3,
     quirk: "none",
     visits: 0,
   },
@@ -256,31 +286,31 @@ export const NPCS: NPC[] = [
       "The node and the dryers share a meter. Every watt the mesh draws is a wash she does not run, and she has never once said this out loud in a meeting.",
     trust: -1,
     grudges: ["marcus"],
-    councilMember: true,
+    households: 4,
     quirk: "none",
     visits: 0,
   },
   {
     id: "june",
     name: "June Adeyemi",
-    publicPosition: "I rent. I have no roof to give and no roof to protect.",
+    publicPosition: "We rent. We have no roof to give and no roof to protect, and we still pay dues.",
     trueMotivation:
       "She is the only person who has read the bylaws end to end, and she votes on precedent rather than on outcomes. She is also three months from moving to her mother's in Gary, and has told no one.",
     trust: 0,
     grudges: [],
-    councilMember: true,
+    households: 8,
     quirk: "none",
     visits: 0,
   },
   {
     id: "hollis",
     name: "Hollis Trent",
-    publicPosition: "Height is an asset. The building will host, at a price.",
+    publicPosition: "Height is an asset. Fourteen storeys of us, and the building will host, at a price.",
     trueMotivation:
       "The 400's board is two votes from selling to a developer. He needs the building to become infrastructure the neighborhood would fight to keep.",
     trust: -1,
     grudges: [],
-    councilMember: false,
+    households: 12,
     quirk: "none",
     visits: 0,
   },
@@ -292,7 +322,7 @@ export const NPCS: NPC[] = [
       "She has been running triage over a neighbor's handheld LoRa set for five months and has not told the council, because she is certain they would take it away to be fair about it.",
     trust: 2,
     grudges: [],
-    councilMember: false,
+    households: 2,
     quirk: "none",
     visits: 0,
   },
@@ -304,7 +334,7 @@ export const NPCS: NPC[] = [
       "She is documenting every council vote for a grant application. A co-op that looks well run is worth forty thousand dollars to the annex, and a co-op that looks chaotic is worth nothing.",
     trust: 1,
     grudges: [],
-    councilMember: false,
+    households: 4,
     quirk: "none",
     visits: 0,
   },
@@ -316,7 +346,7 @@ export const NPCS: NPC[] = [
       "He has kept the pumps running unpaid for three years and wants it written down somewhere official before he dies. A line to the pump house would mean the pumps are on a map.",
     trust: 0,
     grudges: ["hollis"],
-    councilMember: false,
+    households: 2,
     quirk: "none",
     visits: 0,
   },
@@ -338,11 +368,18 @@ export const FEASIBLE: Feasible[] = [
 
 /** What the co-op already had on the morning you were elected. */
 export const STARTING_LINKS: Link[] = [
-  { id: "rialto~laundromat", from: "rialto", to: "laundromat", kind: "cable", status: "active", reliability: 0.95, },
-  { id: "rialto~garage", from: "rialto", to: "garage", kind: "fso", status: "active", reliability: 0.9 },
+  { id: "rialto~laundromat", from: "rialto", to: "laundromat", kind: "cable", status: "active", reliability: 0.95, scar: 0 },
+  { id: "rialto~garage", from: "rialto", to: "garage", kind: "fso", status: "active", reliability: 0.9, scar: 0 },
 ];
 
 export const BYLAWS: { id: string; motion: string; minute: string }[] = [
+  {
+    id: "incorporate",
+    motion:
+      "that the co-op incorporate, and that the fiber stub be held as the corporation's property rather than as a favour",
+    minute:
+      "The co-op is a legal person as of tonight. Whatever the landlord thought he was going to repossess, he is going to have to sue somebody for it, and Dez has been waiting three years to be sued.",
+  },
   {
     id: "consent",
     motion: "that no equipment be mounted on any roof without the owner's consent, recorded by name in the minutes",
@@ -385,6 +422,16 @@ export const EVENT_CARDS: Record<string, EventCard> = {
     id: "storm",
     title: "Weather advisory",
     text: "Lake-effect system, two days out, and the forecast has not moved all morning. Anything holding below half reliability will not be holding after.",
+  },
+  landlord: {
+    id: "landlord",
+    title: "A letter with a return address downtown",
+    text: "The Rialto's landlord has had somebody out to look at the fiber stub, and has worked out what a terminated strand is worth to a company that wants one. Nothing you do on a roof touches this. The co-op has no legal existence and therefore owns nothing.",
+  },
+  seizure: {
+    id: "seizure",
+    title: "They came for the stub",
+    text: "Two men, a work order and a padlock. The Rialto is off the network and everything hanging off it went with it. Dez has gone downtown with a folder. She says it will take days.",
   },
   quiet: {
     id: "quiet",

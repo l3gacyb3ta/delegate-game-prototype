@@ -5,7 +5,7 @@ import { EVENT_CARDS, QUIET_NIGHTS } from "./content";
 import { cohesion, degree, liveSites, reachable, site } from "./graph";
 import { drawRange } from "./rng";
 import type { GameState, LogEntry } from "./types";
-import { COHESION_FORK, TURNS } from "./content";
+import { COHESION_FORK, LANDLORD_FUSE, TURNS } from "./content";
 
 type Candidate = { id: string; weight: number };
 
@@ -16,8 +16,9 @@ function candidates(state: GameState): Candidate[] {
   if (state.flags.stormEta === null && state.turn >= 3 && state.turn <= TURNS - 3 && sinceStorm >= 5) {
     out.push({ id: "storm", weight: 3 });
   }
-  if (state.flags.fork === null && cohesion(state) < COHESION_FORK) {
-    out.push({ id: "fork", weight: 10 });
+  // Discontent has to have been there a while before anybody says it out loud.
+  if (state.flags.fork === null && state.turn >= 7 && cohesion(state) < COHESION_FORK) {
+    out.push({ id: "fork", weight: 5 });
   }
   if (state.flags.hoarder === null && !state.flags.bylaws.includes("clinic-priority")) {
     if (liveSites(state).some((s) => degree(state, s.id) >= 2)) out.push({ id: "hoarder", weight: 3 });
@@ -25,19 +26,32 @@ function candidates(state: GameState): Candidate[] {
   if (state.flags.flare === null && state.npcs.some((n) => n.grudges.length > 0)) {
     out.push({ id: "flare", weight: 3 });
   }
+  // The one card that is not weather and not a grievance. It arrives once, on
+  // its own schedule, and no amount of time on a roof answers it.
+  if (
+    state.flags.landlord === null &&
+    state.flags.seizedUntil === null &&
+    !state.flags.bylaws.includes("incorporate") &&
+    state.turn >= 4 &&
+    state.turn <= 9
+  ) {
+    out.push({ id: "landlord", weight: 6 });
+  }
   return out;
 }
 
-/** The most connected council member is the one with somewhere to go. */
+/** Whoever has the most households and the most roofs has somewhere to go. */
 function forkLeader(state: GameState): string | null {
   const uplinkOwner = state.sites.find((s) => s.uplink)?.owner;
   const ranked = state.npcs
-    .filter((n) => n.councilMember && n.id !== uplinkOwner)
+    .filter((n) => n.id !== uplinkOwner && n.households > 0)
     .map((n) => ({
       id: n.id,
-      pull: state.sites
-        .filter((s) => s.owner === n.id && !state.seceded.includes(s.id))
-        .reduce((sum, s) => sum + 1 + degree(state, s.id), 0),
+      pull:
+        n.households +
+        state.sites
+          .filter((s) => s.owner === n.id && !state.seceded.includes(s.id))
+          .reduce((sum, s) => sum + 1 + degree(state, s.id), 0),
       trust: n.trust,
     }))
     .sort((a, b) => b.pull - a.pull || a.trust - b.trust || a.id.localeCompare(b.id));
@@ -65,7 +79,6 @@ export function drawEvent(
   if (!chosen) return { state, next: rng, entry: null };
 
   const flags = { ...state.flags, bylaws: [...state.flags.bylaws] };
-  let npcs = state.npcs;
   let text = "";
 
   if (chosen.id === "storm") {
@@ -88,6 +101,9 @@ export function drawEvent(
       flags.drag = 0.1;
       text = `${busiest.name} ${EVENT_CARDS.hoarder?.text ?? ""}`;
     }
+  } else if (chosen.id === "landlord") {
+    flags.landlord = { deadline: state.turn + LANDLORD_FUSE };
+    text = `${EVENT_CARDS.landlord?.text ?? ""} They have given the co-op until day ${flags.landlord.deadline}.`;
   } else if (chosen.id === "flare") {
     const sore = state.npcs.filter((n) => n.grudges.length > 0);
     const pickIdx = drawRange(rng, 0, sore.length);
@@ -108,7 +124,7 @@ export function drawEvent(
   if (!text) return { state, next: rng, entry: null };
   const card = EVENT_CARDS[chosen.id];
   return {
-    state: { ...state, flags, npcs },
+    state: { ...state, flags },
     next: rng,
     entry: { turn: state.turn, kind: "event", text: `${card ? card.title + ". " : ""}${text}` },
   };

@@ -31,22 +31,15 @@ describe("coverage", () => {
 });
 
 describe("feasibility", () => {
-  it("only offers links where both ends already carry a node", () => {
-    const s = fresh();
-    const ids = buildableLinks(s).map((f) => [f.from, f.to].sort().join("~"));
-    // The water tower has no node yet, so nothing through it is buildable.
-    expect(ids.some((id) => id.includes("watertower"))).toBe(false);
-    expect(degree(s, "rialto")).toBe(2);
+  it("counts the links hanging off the stub", () => {
+    expect(degree(fresh(), "rialto")).toBe(2);
   });
 
-  it("opens up routes once a node is mounted", () => {
+  it("opens new frontier once a site is reached", () => {
     const s = fresh();
-    const mounted: GameState = {
-      ...s,
-      sites: s.sites.map((x) => (x.id === "watertower" ? { ...x, hasNode: true } : x)),
-    };
-    const ids = buildableLinks(mounted).map((f) => [f.from, f.to].sort().join("~"));
-    expect(ids).toContain("rialto~watertower");
+    const ids = buildableLinks(s).map((f) => [f.from, f.to].sort().join("~"));
+    // Lakeview only becomes buildable once the water tower is up.
+    expect(ids).not.toContain("lakeview~watertower");
   });
 });
 
@@ -65,17 +58,51 @@ describe("reliability", () => {
 });
 
 describe("cohesion", () => {
-  it("averages trust across the council only", () => {
+  it("weights trust by how many households a figure speaks for", () => {
     const s = fresh();
-    const council = s.npcs.filter((n) => n.councilMember);
-    const expected = council.reduce((a, n) => a + n.trust, 0) / council.length;
+    const total = s.npcs.reduce((a, n) => a + n.households, 0);
+    const expected = s.npcs.reduce((a, n) => a + n.trust * n.households, 0) / total;
     expect(cohesion(s)).toBeCloseTo(expected);
-    // Ada is warm but has no vote, so warming her further moves nothing.
-    const warmed: GameState = {
+  });
+
+  it("moves further on the big constituency than on the small one", () => {
+    // Hollis speaks for twelve households and Terrence for two, which is the
+    // whole reason it matters which door you spend a day knocking on.
+    const s = fresh();
+    const warm = (id: string): GameState => ({
       ...s,
-      npcs: s.npcs.map((n) => (n.id === "ada" ? { ...n, trust: 3 } : n)),
-    };
-    expect(cohesion(warmed)).toBeCloseTo(expected);
+      npcs: s.npcs.map((n) => (n.id === id ? { ...n, trust: n.trust + 2 } : n)),
+    });
+    expect(cohesion(warm("hollis")) - cohesion(s)).toBeGreaterThan(
+      cohesion(warm("terrence")) - cohesion(s),
+    );
+  });
+});
+
+describe("the frontier", () => {
+  it("only offers links that touch the network, so nothing is ever stranded", () => {
+    const s = fresh();
+    const up = reachable(s);
+    for (const f of buildableLinks(s)) {
+      expect(up.has(f.from) || up.has(f.to)).toBe(true);
+    }
+  });
+
+  it("offers a link to a bare roof, because the motion mounts what it needs", () => {
+    const s = fresh();
+    const ids = buildableLinks(s).map((f) => [f.from, f.to].sort().join("~"));
+    expect(ids).toContain("rialto~watertower");
+    expect(s.sites.find((x) => x.id === "watertower")?.hasNode).toBe(false);
+  });
+});
+
+describe("the stub", () => {
+  it("takes the whole map down with it when it is seized", () => {
+    const s = fresh();
+    expect(reachable(s).size).toBeGreaterThan(0);
+    const seized: GameState = { ...s, flags: { ...s.flags, seizedUntil: 8 } };
+    expect(reachable(seized).size).toBe(0);
+    expect(coverage(seized)).toBe(0);
   });
 });
 
@@ -104,6 +131,20 @@ describe("what a storm takes", () => {
     expect(reliabilityOf(s, cable, "storm")).toBeGreaterThan(0.5);
     const lora = { ...cable, kind: "lora" as const };
     expect(reliabilityOf(s, lora, "storm")).toBeGreaterThan(0.5);
+  });
+
+  it("keeps a scar that repair cannot touch and the fund can", () => {
+    const s = fresh();
+    const link = s.links.find((l) => l.kind === "cable")!;
+    const clean = reliabilityOf(s, link, "clear");
+    const scarred = reliabilityOf(s, { ...link, scar: 0.3 }, "clear");
+    expect(scarred).toBeLessThan(clean);
+    // Hardening the site is what makes it good again, and that costs a motion.
+    const hardened: GameState = {
+      ...s,
+      sites: s.sites.map((x) => (x.id === link.from ? { ...x, hardened: true } : x)),
+    };
+    expect(reliabilityOf(hardened, { ...link, scar: 0 }, "clear")).toBeGreaterThan(scarred);
   });
 
   it("never drives a link negative, however bad the week", () => {

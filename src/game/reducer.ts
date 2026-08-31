@@ -14,19 +14,24 @@ import {
   TRUST_ON_LOST_MOTION,
   MONOLOGUE_TOKENS,
   NPCS,
+  SCAR_PER_STORM,
+  SEIZURE_DAYS,
   SITES,
   STARTING_BUDGET,
   STARTING_LINKS,
   TURNS,
 } from "./content";
+import { EVENT_CARDS } from "./content";
 import { drawEvent, expireFlare, resolveFork } from "./events";
-import { coverage, linkId, reliabilityOf, site } from "./graph";
+import { bareEnds, coverage, linkId, reliabilityOf, site } from "./graph";
 import { evaluate } from "./outcome";
 import { availableProposals, counterproposals, interests } from "./proposals";
 import { draw } from "./rng";
-import { castVote, councilLean } from "./vote";
+import { assemblyLean, castVote } from "./vote";
 import type {
+  Ballot,
   GameAction,
+  Link,
   GameState,
   LogEntry,
   NPC,
@@ -55,7 +60,17 @@ export function initialState(seed: number): GameState {
     scouted: ["rialto", "garage", "laundromat"],
     revealed: [],
     seceded: [],
-    flags: { stormEta: null, lastStorm: -99, hoarder: null, flare: null, fork: null, bylaws: [], drag: 0 },
+    flags: {
+      stormEta: null,
+      lastStorm: -99,
+      hoarder: null,
+      flare: null,
+      fork: null,
+      landlord: null,
+      seizedUntil: null,
+      bylaws: [],
+      drag: 0,
+    },
     log: [
       {
         turn: 0,
@@ -118,7 +133,9 @@ function openDay(state: GameState): GameState {
     s = {
       ...s,
       links: s.links.map((l) =>
-        l.status === "active" && l.reliability < 0.5 ? { ...l, status: "down" } : l,
+        l.status === "active" && l.reliability < 0.5
+          ? { ...l, status: "down", scar: Number((l.scar + SCAR_PER_STORM).toFixed(3)) }
+          : l,
       ),
       flags: { ...s.flags, stormEta: null },
     };
@@ -131,7 +148,7 @@ function openDay(state: GameState): GameState {
           ? "The storm came through and the network did not notice. Somebody should write down that this is what hardening buys."
           : `The storm took down ${fragile.length} link${fragile.length === 1 ? "" : "s"}: ${fragile
               .map((l) => `${site(s, l.from).name} to ${site(s, l.to).name}`)
-              .join("; ")}.`,
+              .join("; ")}. They can be re-aimed, but not made new; the weather keeps what it takes.`,
       ),
     };
   }
@@ -150,6 +167,32 @@ function openDay(state: GameState): GameState {
         ),
       };
     }
+  }
+
+  // The landlord keeps his own calendar, and no afternoon on a roof moves it.
+  if (s.flags.seizedUntil !== null && s.turn >= s.flags.seizedUntil) {
+    s = { ...s, flags: { ...s.flags, seizedUntil: null } };
+    s = {
+      ...s,
+      log: log(
+        s,
+        "event",
+        "Dez came back from downtown with the padlock in her coat pocket and an order she will not explain. The stub is live again. Nothing about why it was taken has changed.",
+      ),
+    };
+  } else if (s.flags.landlord !== null && s.turn >= s.flags.landlord.deadline) {
+    s = {
+      ...s,
+      flags: { ...s.flags, landlord: null, seizedUntil: s.turn + SEIZURE_DAYS },
+    };
+    s = {
+      ...s,
+      log: log(
+        s,
+        "event",
+        `${EVENT_CARDS.seizure?.title}. ${EVENT_CARDS.seizure?.text} It will be day ${s.flags.seizedUntil} before anything comes back.`,
+      ),
+    };
   }
 
   const forked = resolveFork(s);
@@ -229,7 +272,13 @@ function takeAction(state: GameState, a: PlayerAction): GameState {
   };
   return {
     ...s,
-    log: log(s, "action", `Spent the afternoon on a roof re-aiming ${site(s, link.from).name} to ${site(s, link.to).name}. It is back up.`),
+    log: log(
+      s,
+      "action",
+      `Spent the afternoon on a roof re-aiming ${site(s, link.from).name} to ${site(s, link.to).name}. It is back up${
+        link.scar > 0 ? ", and it is not what it was. Only the fund fixes that." : "."
+      }`,
+    ),
   };
 }
 
@@ -239,21 +288,28 @@ function execute(state: GameState, p: Proposal): GameState {
   let s = { ...state, budget: state.budget - p.cost };
 
   if (p.kind === "build-link" && p.from && p.to && p.linkKind) {
-    const id = linkId(p.from, p.to);
-    const link = {
-      id,
+    // The motion pays to mount whatever bare roofs it needs, so nobody is ever
+    // left holding a node that no later vote will connect.
+    const bare = bareEnds(s, p.from, p.to);
+    s = { ...s, sites: s.sites.map((x) => (bare.includes(x.id) ? { ...x, hasNode: true } : x)) };
+    const link: Link = {
+      id: linkId(p.from, p.to),
       from: p.from,
       to: p.to,
       kind: p.linkKind,
-      status: "active" as const,
+      status: "active",
       reliability: 0.9,
+      scar: 0,
     };
     s = { ...s, links: [...s.links, link] };
     s = { ...s, links: s.links.map((l) => ({ ...l, reliability: reliabilityOf(s, l, s.weather) })) };
-  } else if (p.kind === "mount-node" && p.siteId) {
-    s = { ...s, sites: s.sites.map((x) => (x.id === p.siteId ? { ...x, hasNode: true } : x)) };
   } else if (p.kind === "harden" && p.siteId) {
     s = { ...s, sites: s.sites.map((x) => (x.id === p.siteId ? { ...x, hardened: true } : x)) };
+    // The fund makes good what the weather took; an afternoon on a roof cannot.
+    s = {
+      ...s,
+      links: s.links.map((l) => (l.from === p.siteId || l.to === p.siteId ? { ...l, scar: 0 } : l)),
+    };
     if (s.flags.hoarder?.siteId === p.siteId) {
       s = { ...s, flags: { ...s.flags, hoarder: null, drag: 0 } };
     }
@@ -262,6 +318,9 @@ function execute(state: GameState, p: Proposal): GameState {
   } else if (p.kind === "bylaw" && p.bylawId) {
     s = { ...s, flags: { ...s.flags, bylaws: [...s.flags.bylaws, p.bylawId] } };
     if (p.bylawId === "clinic-priority") s = { ...s, flags: { ...s.flags, hoarder: null, drag: 0 } };
+    // Incorporation is the only answer to a landlord, and it works retroactively
+    // on a stub that has already been padlocked.
+    if (p.bylawId === "incorporate") s = { ...s, flags: { ...s.flags, landlord: null, seizedUntil: null } };
   }
 
   // The social consequence of a decision you may not have wanted.
@@ -285,27 +344,31 @@ function executionMinute(s: GameState, p: Proposal, bylawMinute?: string): strin
   if (p.kind === "build-link" && p.from && p.to) {
     return `Carried into effect: ${site(s, p.from).name} to ${site(s, p.to).name} is up. Coverage now stands at ${Math.round(coverage(s) * 100)}% of the map.`;
   }
-  if (p.kind === "mount-node" && p.siteId) {
-    return `Carried into effect: there is co-op equipment on ${site(s, p.siteId).name} as of this evening.`;
-  }
   if (p.kind === "harden" && p.siteId) {
     return `Carried into effect: a battery and a shroud at ${site(s, p.siteId).name}. It will hold in weather that would have taken it down.`;
   }
   return `Carried into effect: dues go up by four dollars. The fund stands at ${s.budget}.`;
 }
 
-function tally(state: GameState, v: VoteResult, kind: "motion" | "counter"): string {
-  const named = (id: string) => state.npcs.find((n) => n.id === id)?.name ?? id;
-  const ayes = v.ballots.filter((b) => b.yes).map((b) => named(b.npcId));
-  const noes = v.ballots.filter((b) => !b.yes).map((b) => named(b.npcId));
-  const head =
-    kind === "counter"
-      ? "On the amendment"
-      : "On the motion";
+const BLOC_NAME: Record<Ballot["bloc"], string> = {
+  essential: "the clinic and the annex",
+  connected: "the connected",
+  dark: "the dark",
+  renters: "the renters",
+};
+
+/**
+ * Minutes, not a toast. The bloc breakdown is the answer to "why did that
+ * fail", and it is the reason the vote happens at this scale at all.
+ */
+function tally(v: VoteResult, kind: "motion" | "counter"): string {
+  const head = kind === "counter" ? "On the amendment" : "On the motion";
+  const lean = (b: (typeof v.blocs)[number]) =>
+    `${BLOC_NAME[b.bloc]} ${b.yes}-${b.no} ${b.yes > b.no ? "for" : b.yes === b.no ? "split" : "against"}`;
   const tie = !v.passed && v.yes === v.no;
-  return `${head}: ${v.yes} in favour, ${v.no} against. ${
-    ayes.length > 0 ? `Aye: ${ayes.join(", ")}. ` : ""
-  }${noes.length > 0 ? `No: ${noes.join(", ")}. ` : ""}${
+  return `${head}: ${v.yes} in favour, ${v.no} against, of ${v.yes + v.no} households. ${v.blocs
+    .map(lean)
+    .join("; ")}. ${
     v.passed ? "Carried." : tie ? "Tied, and the chair does not break ties. Not carried." : "Not carried."
   }`;
 }
@@ -324,18 +387,20 @@ function holdVote(state: GameState, p: Proposal): GameState {
   const { result, next } = castVote(state, p, state.rng);
   let s: GameState = { ...state, rng: next, lastVote: result };
   s = { ...s, log: log(s, "motion", `The delegate moves ${p.motion}.`) };
-  s = { ...s, log: log(s, "vote", tally(s, result, "motion"), result.passed ? "carried" : "lost") };
+  s = { ...s, log: log(s, "vote", tally(result, "motion"), result.passed ? "carried" : "lost") };
 
   if (result.passed) return closeNight(execute(s, p));
 
   // A delegate who keeps bringing motions the room will not carry spends
   // something every time, whether or not they notice.
-  const opposed = new Set(result.ballots.filter((b) => !b.yes).map((b) => b.npcId));
+  const against = new Map(result.ballots.map((b) => [b.npcId, b.no / Math.max(1, b.households)]));
   s = {
     ...s,
-    npcs: s.npcs.map((n) =>
-      opposed.has(n.id) ? { ...n, trust: Number(clamp(n.trust + TRUST_ON_LOST_MOTION).toFixed(3)) } : n,
-    ),
+    npcs: s.npcs.map((n) => {
+      const share = against.get(n.id) ?? 0;
+      if (share <= 0) return n;
+      return { ...n, trust: Number(clamp(n.trust + TRUST_ON_LOST_MOTION * share).toFixed(3)) };
+    }),
   };
 
   // Somebody in the room has an alternative. It gets a vote tonight, and if it
@@ -345,13 +410,13 @@ function holdVote(state: GameState, p: Proposal): GameState {
     s = { ...s, log: log(s, "minute", "Nobody had an alternative in hand. The meeting adjourned early and badly.") };
     return closeNight(s);
   }
-  const best = [...options].sort((a, b) => councilLean(s, b) - councilLean(s, a))[0];
+  const best = [...options].sort((a, b) => assemblyLean(s, b) - assemblyLean(s, a))[0];
   if (!best) return closeNight(s);
 
   const counter = castVote(s, best, s.rng);
   s = { ...s, rng: counter.next, pendingCounter: counter.result, phase: "counter" };
   s = { ...s, log: log(s, "motion", `${counterSpeaker(s, best)} moves instead ${best.motion}.`) };
-  s = { ...s, log: log(s, "vote", tally(s, counter.result, "counter"), counter.result.passed ? "carried" : "lost") };
+  s = { ...s, log: log(s, "vote", tally(counter.result, "counter"), counter.result.passed ? "carried" : "lost") };
   if (counter.result.passed) s = execute(s, best);
   else s = { ...s, log: log(s, "minute", "The amendment failed too. The meeting adjourned with nothing decided, which is itself a decision.") };
   return s;
@@ -360,10 +425,12 @@ function holdVote(state: GameState, p: Proposal): GameState {
 /** Whoever the amendment most obviously helps is the one who stands up. */
 function counterSpeaker(state: GameState, p: Proposal): string {
   const info = interests(state, p);
-  const council = state.npcs.filter((n) => n.councilMember);
+  const floor = state.npcs.filter((n) => n.households > 0);
   const speaker =
-    council.find((n) => info.benefits.includes(n.id)) ??
-    [...council].sort((a, b) => b.trust - a.trust)[0];
+    [...floor]
+      .filter((n) => info.benefits.includes(n.id))
+      .sort((a, b) => b.households - a.households)[0] ??
+    [...floor].sort((a, b) => b.trust - a.trust)[0];
   return speaker ? speaker.name : "A voice from the back";
 }
 

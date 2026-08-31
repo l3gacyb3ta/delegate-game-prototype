@@ -182,3 +182,21 @@ input {
   gap: 16px;
   align-items: baseline;
 }
+
+/* ---- the assembly, grouped by bloc ---- */
+
+.neighbour-roll .bloc-head td {
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  padding-top: 6px;
+  font-weight: 700;
+}
+.neighbour-roll .bloc-want {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 14px;
+}
+.tally .bloc-row td { font-weight: 700; border-top: 1px solid var(--ink); }
+.tally .voice-row td:first-child { padding-left: 16px; color: var(--muted); }
+.tally .fill { letter-spacing: -1px; width: 1%; white-space: nowrap; }
+.day-strip .seized { color: var(--failed); font-weight: 700; }

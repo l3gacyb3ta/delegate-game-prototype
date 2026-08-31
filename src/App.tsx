@@ -2,7 +2,7 @@ import { useEffect, useReducer, useState } from "react";
 import { CouncilPane } from "./ui/CouncilPane";
 import { MapPane, SiteDetail } from "./ui/MapPane";
 import { PeoplePane } from "./ui/PeoplePane";
-import { cohesion, coverage } from "./game/graph";
+import { assembly, cohesion, coverage, households } from "./game/graph";
 import { initialState, reduce } from "./game/reducer";
 import { TURNS } from "./game/content";
 import type { GameState } from "./game/types";
@@ -56,6 +56,7 @@ export function App() {
   const canAct = state.phase === "day" && state.actionsLeft > 0;
   const cov = Math.round(coverage(state) * 100);
   const room = trustWord(cohesion(state));
+  const sizes = assembly(state);
 
   return (
     <>
@@ -72,6 +73,9 @@ export function App() {
           the room reads <b>{room}</b>
         </span>
         <span className="measure">
+          {households(state)} households · <b>{sizes.dark}</b> dark · <b>{sizes.connected}</b> connected
+        </span>
+        <span className="measure">
           fund <b>{state.budget}</b>
         </span>
         <span className="measure">
@@ -79,6 +83,14 @@ export function App() {
         </span>
         {state.flags.stormEta !== null && (
           <span className="measure storm-warning">storm expected day {state.flags.stormEta}</span>
+        )}
+        {state.flags.landlord !== null && (
+          <span className="measure storm-warning">
+            the stub goes day {state.flags.landlord.deadline}
+          </span>
+        )}
+        {state.flags.seizedUntil !== null && (
+          <span className="measure seized">STUB SEIZED until day {state.flags.seizedUntil}</span>
         )}
       </div>
 
