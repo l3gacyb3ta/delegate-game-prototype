@@ -162,6 +162,24 @@ mechanic on screen seven or eight times a run. Mean margin is 9 votes of 48, and
 tight runs go to the wire — the bulldozer's contested votes land inside four
 votes half the time.
 
+## Playing it without a browser
+
+`play.mjs` is a self-contained text version — the same reducer, no dependencies,
+one process per move with the run persisted to `.delegate-save.json`:
+
+```sh
+node play.mjs help
+node play.mjs new blocs
+node play.mjs open
+node play.mjs visit hollis
+node play.mjs convene
+node play.mjs move 3
+```
+
+It exists so a language model can play the game and tell you what it thinks;
+`PLAYTEST.md` is the brief to hand over with it. The bundle is rebuilt by
+`npm run check`, so it cannot drift from the source.
+
 ## Shape of the code
 
 Every turn is `state -> state`. The whole game is one JSON object and a pure
@@ -180,6 +198,7 @@ src/game/
   reducer.ts      state -> state
   outcome.ts      endings and epilogues
   sim.ts          the tuning harness behind that table
+src/cli.ts        the text front end bundled into play.mjs
 src/ui/           three panes, plain SVG map, hand-placed coordinates
 ```
 

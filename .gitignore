@@ -7,3 +7,5 @@ devenv.local.nix
 *.log
 .DS_Store
 *.tsbuildinfo
+.delegate-save.json
+.delegate-transcript.md
