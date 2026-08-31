@@ -1,0 +1,184 @@
+/* An instrument, not a page. Two hues beyond ink and paper: one for what
+   carried and is up, one for what failed and is down. Everything else is
+   rule, ink, and texture. */
+
+:root {
+  --paper: #ffffff;
+  --ink: #0a0a0a;
+  --muted: #666666;
+  --rule: #d4d4d4;
+  --carried: #16642c; /* a motion that passed, a link that is up */
+  --failed: #a01b1b; /* a motion that failed, a link that is down */
+  --wash: #f2f2f2;
+
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  /* This is a tool for reading a room. It declines to be a phone. */
+  min-width: 1100px;
+}
+
+h1, h2, h3 { line-height: 1.2; margin: 0 0 0.1em; font-weight: 700; }
+h1 { font-size: 20px; }
+h2 { font-size: 16px; }
+h3 { font-size: 16px; }
+p { margin: 0 0 0.6em; max-width: 62ch; }
+a { color: var(--ink); }
+
+button {
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+button:disabled { border-color: var(--rule); color: var(--muted); cursor: default; }
+
+input {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 2px 6px;
+}
+
+.mono, .measure { font-family: var(--font-mono); font-size: 14px; }
+.quiet { color: var(--muted); }
+
+/* ---- the strip across the top: everything you can know at a glance ---- */
+
+.day-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  border-bottom: 1px solid var(--ink);
+  padding: 6px 14px;
+}
+.day-strip .measure { white-space: nowrap; }
+.day-strip .measure b { font-weight: 700; }
+.day-strip .storm-warning { color: var(--failed); }
+
+.delegate-hall {
+  display: grid;
+  grid-template-columns: 1fr 264px 460px;
+  height: calc(100vh - 37px);
+}
+.delegate-hall > * { overflow-y: auto; }
+.neighbour-roll, .council-minutes { border-left: 1px solid var(--ink); }
+
+/* ---- the map ---- */
+
+.mesh-map { display: block; width: 100%; height: auto; }
+.mesh-map text { font-family: var(--font-mono); font-size: 14px; fill: var(--ink); }
+.mesh-map .site-label.dark { fill: var(--muted); }
+.mesh-map .site-marker { cursor: pointer; }
+.mesh-map .site-marker:hover circle, .mesh-map .site-marker:hover rect { stroke-width: 3; }
+.mesh-map .terrain { stroke: var(--rule); stroke-width: 1; stroke-dasharray: 1 5; }
+.mesh-map .span { stroke: var(--ink); fill: none; }
+.mesh-map .span.down { stroke: var(--failed); stroke-dasharray: 3 3; }
+.mesh-map .selected { stroke: var(--carried); stroke-width: 3; fill: none; }
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  border-top: 1px solid var(--rule);
+  padding: 6px 14px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.site-detail { border-top: 1px solid var(--ink); padding: 8px 14px; }
+.site-detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 0 12px; margin: 4px 0 8px; }
+.site-detail dt { color: var(--muted); font-family: var(--font-mono); font-size: 14px; }
+.site-detail dd { margin: 0; font-family: var(--font-mono); font-size: 14px; }
+.site-detail .unwalked { color: var(--muted); }
+
+/* ---- the people ---- */
+
+.neighbour-roll table { border-collapse: collapse; width: 100%; }
+.neighbour-roll caption {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ink);
+  font-weight: 700;
+}
+.neighbour-roll td { padding: 2px 6px; vertical-align: top; border-bottom: 1px solid var(--rule); }
+.neighbour-roll tr.chosen { background: var(--wash); }
+.neighbour-roll .standing { font-family: var(--font-mono); font-size: 14px; color: var(--muted); text-align: right; white-space: nowrap; }
+.neighbour-roll .seat { font-family: var(--font-mono); font-size: 14px; color: var(--muted); }
+.neighbour-roll button { padding: 1px 6px; }
+
+.dossier { border-top: 1px solid var(--ink); padding: 8px 10px; }
+.dossier .said { margin-bottom: 8px; }
+.dossier .heard { border-left: 3px solid var(--ink); padding-left: 10px; }
+.dossier .unheard { color: var(--muted); }
+
+/* ---- the minutes and the council ---- */
+
+.council-minutes { display: flex; flex-direction: column; }
+.minute-log { flex: 1; padding: 0 14px 14px; }
+.minute-log .entry { padding: 5px 0; border-bottom: 1px solid var(--rule); }
+.minute-log .entry.day {
+  border-bottom: 1px solid var(--ink);
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+.minute-log .entry.weather, .minute-log .entry.action { color: var(--muted); }
+.minute-log .entry.vote { font-family: var(--font-mono); font-size: 14px; }
+.minute-log .entry.vote.carried { color: var(--carried); }
+.minute-log .entry.vote.lost { color: var(--failed); }
+.minute-log .entry.motion { font-weight: 700; }
+.minute-log .entry.ending { border: 1px solid var(--ink); padding: 10px; margin-top: 10px; }
+
+.floor {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+  padding: 10px 14px;
+}
+.floor h2 { margin-bottom: 6px; }
+
+.motion-picker { max-height: 320px; overflow-y: auto; margin-bottom: 8px; }
+.motion-list { list-style: none; margin: 0; padding: 0; }
+.motion-list li { border-bottom: 1px solid var(--rule); padding: 3px 0; display: flex; gap: 8px; align-items: baseline; }
+.motion-list .price { font-family: var(--font-mono); font-size: 14px; color: var(--muted); white-space: nowrap; }
+.motion-list .motion-text { flex: 1; }
+.motion-group { font-family: var(--font-mono); font-size: 14px; color: var(--muted); padding-top: 8px; }
+
+.tally { font-family: var(--font-mono); font-size: 14px; border-collapse: collapse; width: 100%; margin: 6px 0; }
+.tally td { padding: 2px 6px; border-bottom: 1px solid var(--rule); }
+.tally .aye { color: var(--carried); }
+.tally .nay { color: var(--failed); }
+
+.epilogue { padding: 14px; }
+.epilogue h2 { margin-bottom: 8px; }
+
+.colophon {
+  border-top: 1px solid var(--rule);
+  padding: 6px 14px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}

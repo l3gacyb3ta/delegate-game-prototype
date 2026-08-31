@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.direnv/
+.devenv/
+.devenv.flake.nix
+devenv.local.nix
+*.log
+.DS_Store
+*.tsbuildinfo
